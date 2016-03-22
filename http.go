@@ -7,9 +7,9 @@ package builder
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	//"io/ioutil"
 	"net/http"
-	"regexp"
+	//"regexp"
 )
 
 func writeJson(w http.ResponseWriter, content interface{}) {
@@ -25,60 +25,5 @@ func (p *Project) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 	} else {
 		http.NotFound(w, r)
-	}
-}
-
-func (p *Project) postHandler(w http.ResponseWriter, r *http.Request) {
-	path := r.URL.Path
-	jsonText, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		http.Error(w, "500 internal error", http.StatusInternalServerError)
-		return
-	}
-	reProject := regexp.MustCompile(`^/project/([A-Za-z_0-9]+)$`)
-	reBuild := regexp.MustCompile(`^/project/([A-Za-z_0-9]+)/build$`)
-	if pMatches := reProject.FindSubmatch([]byte(path)); pMatches != nil {
-		p, present := db.Projects[string(pMatches[1])]
-		if !present {
-			/* Return a 404 if the project requested does not exist. */
-			http.NotFound(w, r)
-			return
-		}
-		err := json.Unmarshal(jsonText, p)
-		if err != nil {
-			http.Error(w, "500 internal error", http.StatusInternalServerError)
-			return
-		}
-		writeJson(w, p)
-	} else if bMatches := reBuild.FindSubmatch([]byte(path)); bMatches != nil {
-		p, present := db.Projects[string(bMatches[1])]
-		if !present {
-			/* Return a 404 if the project requested does not exist. */
-			http.NotFound(w, r)
-			return
-		}
-		//var build builder.BuildRequest
-		//err := json.Unmarshal(jsonText, build)
-		//if err != nil {
-		//    http.Error(w, "500 internal error", http.StatusInternalServerError)
-		//    return
-		//}
-		go func() { db.Build(string(bMatches[1])) }()
-		writeJson(w, p)
-		// TODO Start running a build for this project
-	} else {
-		/* Return a 404 if the project requested does not exist. */
-		http.NotFound(w, r)
-		return
-	}
-}
-
-func (p *Project) getHandler(w http.ResponseWriter, r *http.Request) {
-			writeJson(w, p)
-		} else {
-			/* Return a 404 if the project requested does not exist. */
-			http.NotFound(w, r)
-			return
-		}
 	}
 }

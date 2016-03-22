@@ -80,22 +80,6 @@ func (p *Project) Load(file string) {
 	}
 }
 
-func NewBuildRecord(project Project) *BuildRecord {
-	record := &BuildRecord{}
-
-	record.Hash = ""
-	record.Name = project.Name
-	record.Components = make([]Component, len(project.Components))
-	for name, component := range record.Components {
-		component.Name = project.Components[name].Name
-		component.Url = project.Components[name].Url
-		component.Revision = project.Components[name].Revision
-	}
-	record.Steps = make([]StepRecord, len(project.Steps))
-	// TODO
-	return record
-}
-
 // Build runs all the steps required to build a project, including first
 // making sure all the GIT repositories are cloned and up-to-date, and
 // then running through each of the build steps.
