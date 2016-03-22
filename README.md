@@ -1,2 +1,3 @@
-# build-o-mat
-Automated Software Build Tool
+# builder
+
+A simple automated software build tool.
