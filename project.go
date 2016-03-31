@@ -16,6 +16,7 @@ import (
 	"os"
 	"sort"
 	"time"
+	"net/http"
 )
 
 type BuildStatus string
@@ -116,7 +117,7 @@ func (p *Project) Build(root string) string {
 	hash := md5.New()
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Println("Build failed", r)
+			log.Println("Build failed", r)
 		}
 	}()
 	// Create the root directory for the build if it does not exist yet.
@@ -132,6 +133,7 @@ func (p *Project) Build(root string) string {
 		componentNames[i] = componentName
 		i += 1
 	}
+	log.Println("Git Checkout")
 	sort.Strings(componentNames)
 	for index := range componentNames {
 		component := p.Components[componentNames[index]]
@@ -139,8 +141,10 @@ func (p *Project) Build(root string) string {
 		commit := runGitCheckout(component.Url, component.Name, component.Revision, root)
 		io.WriteString(hash, fmt.Sprintf("%s %s %s\n", component.Url, component.Name, commit))
 	}
+	log.Println("Build Steps")
 	io.WriteString(hash, "Steps:\n")
 	for _, step := range p.Steps {
+		log.Println(" * ", step.Description)
 		runCommand(step.Directory, root, step.Command[0], step.Command[1:]...)
 		io.WriteString(hash, step.Directory)
 		for i, arg := range step.Command {
@@ -150,4 +154,20 @@ func (p *Project) Build(root string) string {
 	}
 	fmt.Printf("Hash: %x\n", hash.Sum(nil))
 	return fmt.Sprintf("%x", hash.Sum(nil))
+}
+
+func writeJson(w http.ResponseWriter, content interface{}) {
+	text, _ := json.MarshalIndent(content, "", "    ")
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+	fmt.Fprintf(w, "%s\n", text)
+}
+
+func (p *Project) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "GET" {
+		writeJson(w, p)
+	} else if r.Method == "POST" {
+		http.NotFound(w, r)
+	} else {
+		http.NotFound(w, r)
+	}
 }

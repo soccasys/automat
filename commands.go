@@ -83,14 +83,14 @@ func findGitRemoteCommit(name, ref, root string) string {
 }
 
 func runCommand(name string, root string, command string, args ...string) {
-	if _, errStat := os.Stat(root + "/" + name + "/.git"); os.IsNotExist(errStat) {
-		log.Panic("Git repository not found", errStat)
+	if _, errStat := os.Stat(root + "/" + name ); os.IsNotExist(errStat) {
+		log.Panic("Directory not found: ", errStat)
 	}
 	cmd := exec.Command(command, args...)
 	cmd.Dir = root + "/" + name
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
-		log.Panic("Failed to run command", err)
+		log.Panic("Failed to run command: ", err)
 	}
 }
