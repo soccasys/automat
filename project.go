@@ -47,12 +47,14 @@ type Project struct {
 	Name       string               `json:"name"`
 	Components map[string]Component `json:"components"`
 	Steps      []BuildStep          `json:"steps"`
+	Env        map[string]string     `json:"env"`
 }
 
 type BuildStep struct {
 	Description string   `json:"description"`
 	Directory   string   `json:"directory"`
 	Command     []string `json:"command"`
+	Env         map[string]string `json:"env"`
 }
 
 type Component struct {
@@ -66,7 +68,25 @@ func NewProject() *Project {
 	p.Name = ""
 	p.Components = map[string]Component{}
 	p.Steps = []BuildStep{}
+	p.Env = map[string]string{}
 	return &p
+}
+
+func (p *Project) AddComponent(name, url, revision string) {
+        var c Component
+        c.Name = name
+        c.Url = url
+        c.Revision = revision
+        p.Components[c.Name] = c
+}
+
+func (p *Project) AddBuildStep(description, directory string, command []string) {
+        var step BuildStep
+        step.Description = description
+        step.Directory = directory
+        step.Command = command
+	step.Env = map[string]string{}
+        p.Steps = append(p.Steps, step)
 }
 
 // Load a project from a JSON formatted file.
@@ -78,6 +98,14 @@ func (p *Project) Load(file string) {
 	if err := json.Unmarshal(content, &p); err != nil {
 		log.Panic("Error:", err)
 	}
+}
+
+// Save a project to a JSON formatter file.
+func (p *Project) Save(file string) {
+        text, _ := json.MarshalIndent(p, "", "    ")
+        if err := ioutil.WriteFile(file, text, 0664); err != nil {
+		log.Panic("Error:", err)
+        }
 }
 
 // Build runs all the steps required to build a project, including first
