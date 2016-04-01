@@ -7,6 +7,7 @@ package builder
 import (
 	"bytes"
 	"log"
+	"time"
 	"os"
 	"os/exec"
 	"strings"
@@ -82,7 +83,7 @@ func findGitRemoteCommit(name, ref, root string) string {
 	return strings.TrimSpace(buffer.String())
 }
 
-func runCommand(name string, root string, command string, args ...string) {
+func runCommand(name string, root string, command string, args ...string) (BuildStatus, time.Duration) {
 	if _, errStat := os.Stat(root + "/" + name ); os.IsNotExist(errStat) {
 		log.Panic("Directory not found: ", errStat)
 	}
@@ -90,7 +91,10 @@ func runCommand(name string, root string, command string, args ...string) {
 	cmd.Dir = root + "/" + name
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
+	start := time.Now()
 	if err := cmd.Run(); err != nil {
 		log.Panic("Failed to run command: ", err)
 	}
+	end := time.Now()
+	return BuildOk, end.Sub(start)
 }

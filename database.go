@@ -9,13 +9,13 @@ package builder
 import (
 	//"crypto/md5"
 	//"encoding/json"
-	"fmt"
 	//"io"
-	"io/ioutil"
-	"log"
 	//"os"
 	//"sort"
 	//"time"
+	"fmt"
+	"io/ioutil"
+	"log"
 	"net/http"
 	"regexp"
 )
@@ -41,11 +41,15 @@ func NewDatabase(root string) *Database {
 		if !file.IsDir() {
 			log.Printf("Loading project: %s", file.Name())
 			p := NewProject()
-			p.Load(fmt.Sprintf("%s/projects/%s", root, file.Name()))
+			err := p.Load(fmt.Sprintf("%s/projects/%s", root, file.Name()))
 			// FIXME Check that the name of the file and the name of
 			//       the file and the name of the project are matching.
-			db.Projects[p.Name] = p
-			log.Printf("Project loaded: %s", file.Name())
+			if err != nil {
+				log.Printf("Project failed: %s %s", file.Name(), err)
+			} else {
+				db.Projects[p.Name] = p
+				log.Printf("Project loaded: %s", file.Name())
+			}
 		}
 	}
 	db.Env = map[string]string{}
@@ -53,16 +57,16 @@ func NewDatabase(root string) *Database {
 	return &db
 }
 
-func (db *Database) Build(project string) string {
+func (db *Database) Build(project string) *BuildRecord {
 	log.Printf("Build started: %s", project)
         p, present := db.Projects[project]
         if !present {
 		log.Panic("Project not found")
 	}
 	// FIXME The build is synchronous for now
-	id := p.Build(fmt.Sprintf("%s/builds/%s", db.Root, project))
+	record := p.Build(fmt.Sprintf("%s/builds/%s", db.Root, project))
 	log.Printf("Build finished: %s", project)
-	return id
+	return record
 }
 
 func (db *Database) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -104,8 +108,8 @@ func (db *Database) ServeHTTP(w http.ResponseWriter, r *http.Request) {
                         return
                 }
 		if r.Method == "GET" {
-			db.Build(p.Name)
-			p.ServeHTTP(w, r)
+			record := db.Build(p.Name)
+			record.ServeHTTP(w, r)
                         return
 		} else if r.Method == "POST" {
 			http.NotFound(w, r)
