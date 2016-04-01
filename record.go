@@ -28,10 +28,11 @@ const (
 
 // BuildRecord is used to record the details of a build that has been run.
 type BuildRecord struct {
-	Hash       string
-	Name       string
-	Components map[string]CheckoutRecord
-	Steps      []StepRecord
+	Hash       string                    `json:"hash"`
+	Duration   time.Duration             `json:"duration"`
+	Name       string                    `json:"name"`
+	Components map[string]CheckoutRecord `json:"components"`
+	Steps      []StepRecord              `json:"steps"`
 }
 
 // CheckoutRecord
@@ -84,9 +85,28 @@ func (r *BuildRecord) SetStatus(index int, status BuildStatus, duration time.Dur
 	r.Steps[index] = step
 }
 
+func (r *BuildRecord) NewProject() *Project {
+	var p Project
+	p.Name = r.Name
+        p.Components = map[string]Component{}
+	for cname, component := range r.Components {
+		var c Component
+		c.Name = component.Name
+		c.Url = component.Url
+		c.Revision = component.Revision
+		p.Components[cname] = c
+	}
+        p.Steps = []BuildStep{}
+	for index := range r.Steps {
+		p.Steps = append(p.Steps, BuildStep{Directory: r.Steps[index].Directory, Command: r.Steps[index].Command})
+	}
+	// FIXME Add handling of environment variables
+	return &p
+}
+
 func (record *BuildRecord) ServeHTTP(w http.ResponseWriter, r *http.Request) {
         if r.Method == "GET" {
-                writeJson(w, record)
+                WriteHttpJson(w, record)
         } else if r.Method == "POST" {
                 http.NotFound(w, r)
         } else {

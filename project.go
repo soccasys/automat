@@ -108,6 +108,7 @@ func (p *Project) Build(root string) *BuildRecord {
 		}
 	}
 	record := NewBuildRecord(*p)
+	buildStart := time.Now()
 	io.WriteString(hash, "Components:\n")
 	componentNames := make([]string, len(p.Components))
 	i := 0
@@ -139,12 +140,14 @@ func (p *Project) Build(root string) *BuildRecord {
 	}
 	log.Printf("Hash: %x\n", hash.Sum(nil))
 	record.Hash = fmt.Sprintf("%x", hash.Sum(nil))
+	buildEnd := time.Now()
+	record.Duration = buildEnd.Sub(buildStart)
 	return record
 }
 
 func (p *Project) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "GET" {
-		writeJson(w, p)
+		WriteHttpJson(w, p)
 	} else if r.Method == "POST" {
 		http.NotFound(w, r)
 	} else {
