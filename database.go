@@ -10,7 +10,7 @@ import (
 	//"crypto/md5"
 	//"encoding/json"
 	//"io"
-	//"os"
+	"os"
 	//"sort"
 	//"time"
 	"fmt"
@@ -57,44 +57,42 @@ func NewDatabase(root string) *Database {
 	return &db
 }
 
-func (db *Database) Build(project string) *BuildRecord {
-	log.Printf("Build started: %s", project)
-        p, present := db.Projects[project]
-        if !present {
-		log.Panic("Project not found")
-	}
-	// FIXME The build is synchronous for now
-	record := p.Build(fmt.Sprintf("%s/builds/%s", db.Root, project))
-	log.Printf("Build finished: %s", project)
-	return record
-}
-
 func (db *Database) ServeHTTP(w http.ResponseWriter, r *http.Request) {
         path := r.URL.Path
+	log.Printf("%s %s", r.Method, path)
         reProject := regexp.MustCompile(`^/projects/([-A-Za-z_0-9]+)$`)
         reBuild := regexp.MustCompile(`^/projects/([-A-Za-z_0-9]+)/build$`)
         if pMatches := reProject.FindSubmatch([]byte(path)); pMatches != nil {
                 p, present := db.Projects[string(pMatches[1])]
-                if !present {
+                if !present && (r.Method == http.MethodGet || r.Method == http.MethodDelete) {
                         /* Return a 404 if the project requested does not exist. */
                         http.NotFound(w, r)
                         return
                 }
-                //err := json.Unmarshal(jsonText, p)
-                //if err != nil {
-                //        http.Error(w, "500 internal error", http.StatusInternalServerError)
-                //        return
-                //}
-		if r.Method == "GET" {
+		if r.Method == http.MethodGet {
 			p.ServeHTTP(w, r)
                         return
-		} else if r.Method == "POST" {
-			//jsonText, err := ioutil.ReadAll(r.Body)
-			//if err != nil {
-			//        http.Error(w, "500 internal error", http.StatusInternalServerError)
-			//        return
-			//}
-			http.NotFound(w, r)
+		} else if r.Method == http.MethodDelete {
+			// FIXME Better implementation is required here. Error checking for file removal, etc...
+			p.ServeHTTP(w, r)
+			delete(db.Projects, p.Name)
+			os.Remove(fmt.Sprintf("%s/projects/%s", db.Root, p.Name))
+                        return
+		} else if r.Method == http.MethodPut || r.Method == http.MethodPost {
+			// Create a new project, save it.
+			p := NewProject()
+			err := p.ReadJson(r.Body)
+			if err != nil || p.Name != string(pMatches[1]) {
+				http.Error(w, "400 bad request", http.StatusBadRequest)
+				return
+			}
+			errSave := p.Save(fmt.Sprintf("%s/projects/%s", db.Root, p.Name))
+			if errSave != nil {
+				http.Error(w, "500 failed to save the project", http.StatusInternalServerError)
+				return
+			}
+			db.Projects[p.Name] = p
+			p.ServeHTTP(w, r)
                         return
 		} else {
 			http.NotFound(w, r)
@@ -108,7 +106,19 @@ func (db *Database) ServeHTTP(w http.ResponseWriter, r *http.Request) {
                         return
                 }
 		if r.Method == "GET" {
-			record := db.Build(p.Name)
+	                // Create the root directory for the build if it does not exist yet.
+	                root := fmt.Sprintf("%s/builds/%s", db.Root, p.Name)
+	                if _, errStat := os.Stat(root); os.IsNotExist(errStat) {
+		                if errMkdir := os.MkdirAll(root, 0755); errMkdir != nil {
+					http.Error(w, "500 failed to create build directory", http.StatusInternalServerError)
+					return
+		                }
+	                }
+			record, errBuild := p.Build(root)
+			if errBuild != nil {
+				http.Error(w, "500 A critical error occured during the build", http.StatusInternalServerError)
+				return
+			}
 			record.ServeHTTP(w, r)
                         return
 		} else if r.Method == "POST" {

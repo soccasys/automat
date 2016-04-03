@@ -13,7 +13,6 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
-	"os"
 	"sort"
 	"time"
 	"net/http"
@@ -82,18 +81,44 @@ func (p *Project) Load(file string) error {
 	return err
 }
 
-// Save a project to a JSON formatter file.
-func (p *Project) Save(file string) {
-        text, _ := json.MarshalIndent(p, "", "    ")
-        if err := ioutil.WriteFile(file, text, 0664); err != nil {
-		log.Panic("Error:", err)
-        }
+// Load a project from a JSON formatted Reader
+func (p *Project) ReadJson(r io.Reader) error {
+	content, err := ioutil.ReadAll(r)
+	if err != nil {
+		log.Println("Error:", err)
+		return err
+	}
+	if err := json.Unmarshal(content, &p); err != nil {
+		log.Println("Error:", err)
+		return err
+	}
+	if p.Name == "" {
+		return fmt.Errorf("Invalid Project Name")
+	}
+	return err
 }
 
-// Build runs all the steps required to build a project, including first
-// making sure all the GIT repositories are cloned and up-to-date, and
-// then running through each of the build steps.
-func (p *Project) Build(root string) *BuildRecord {
+// Save a project to a JSON formatter file.
+func (p *Project) Save(file string) error {
+        text, _ := json.MarshalIndent(p, "", "    ")
+        return ioutil.WriteFile(file, text, 0664)
+}
+
+// Build runs all the steps required to build a project:
+// - Checkout all the components
+// - Run all the build steps, with the project and step-level
+//   environment variables set
+//
+// When an error occurs during the checkout of a component the
+// other checkouts are attempted, but the build steps are skipped.
+//
+// When an error occurs during a build step, the following steps
+// are skipped.
+//
+// The "root" directory must have been created prior to starting
+// the build.
+//
+func (p *Project) Build(root string) (*BuildRecord, error) {
 	log.Println("Build started")
 	hash := md5.New()
 	defer func() {
@@ -101,14 +126,9 @@ func (p *Project) Build(root string) *BuildRecord {
 			log.Println("Build failed: ", r)
 		}
 	}()
-	// Create the root directory for the build if it does not exist yet.
-	if _, errStat := os.Stat(root); os.IsNotExist(errStat) {
-		if errMkdir := os.MkdirAll(root, 0755); errMkdir != nil {
-			log.Panic("Failed to create build directory", errMkdir)
-		}
-	}
 	record := NewBuildRecord(*p)
 	buildStart := time.Now()
+	buildFailed := false
 	io.WriteString(hash, "Components:\n")
 	componentNames := make([]string, len(p.Components))
 	i := 0
@@ -121,17 +141,36 @@ func (p *Project) Build(root string) *BuildRecord {
 	for index := range componentNames {
 		component := p.Components[componentNames[index]]
 		start := time.Now()
-		commit := runGitCheckout(component.Url, component.Name, component.Revision, root)
+		commit, err := runGitCheckout(component.Url, component.Name, component.Revision, root)
 		end := time.Now()
+		if err != nil {
+			buildFailed = true
+			record.SetRevision(componentNames[index], commit, end.Sub(start), BuildFailed)
+		} else {
+			record.SetRevision(componentNames[index], commit, end.Sub(start), BuildOk)
+		}
 		io.WriteString(hash, fmt.Sprintf("%s %s %s\n", component.Url, component.Name, commit))
-		record.SetRevision(componentNames[index], commit, end.Sub(start), BuildOk)
 	}
 	log.Println("Build Steps")
 	io.WriteString(hash, "Steps:\n")
 	for index, step := range p.Steps {
-		log.Println(" * ", step.Description)
-		status, duration := runCommand(step.Directory, root, step.Command[0], step.Command[1:]...)
-		record.SetStatus(index, status, duration)
+		start := time.Now()
+		if !buildFailed {
+			directory := fmt.Sprintf("%s/%s", root, step.Directory)
+			// FIXME Compute the environment to be passed to the command here.
+			err := runCommand(directory, step.Command[0], step.Command[1:]...)
+			end := time.Now()
+			if err != nil {
+				buildFailed = true
+				record.SetStatus(index, BuildFailed, end.Sub(start))
+			} else {
+				record.SetStatus(index, BuildOk, end.Sub(start))
+			}
+		} else {
+			// Skip build steps if a failure already occured.
+			end := time.Now()
+			record.SetStatus(index, BuildSkipped, end.Sub(start))
+		}
 		io.WriteString(hash, step.Directory)
 		for i, arg := range step.Command {
 			io.WriteString(hash, fmt.Sprintf("%d: %s\n", i, arg))
@@ -142,14 +181,15 @@ func (p *Project) Build(root string) *BuildRecord {
 	record.Hash = fmt.Sprintf("%x", hash.Sum(nil))
 	buildEnd := time.Now()
 	record.Duration = buildEnd.Sub(buildStart)
-	return record
+	return record, nil
 }
 
 func (p *Project) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if r.Method == "GET" {
+	if r.Method == http.MethodGet || r.Method == http.MethodDelete {
 		WriteHttpJson(w, p)
-	} else if r.Method == "POST" {
-		http.NotFound(w, r)
+	} else if r.Method == http.MethodPut || r.Method == http.MethodPost {
+		// Adding/Updating the project is handled by the database
+		WriteHttpJson(w, p)
 	} else {
 		http.NotFound(w, r)
 	}

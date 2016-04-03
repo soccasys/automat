@@ -61,11 +61,12 @@ func NewBuildRecord(p Project) *BuildRecord {
 		co.Name = component.Name
 		co.Url = component.Url
 		co.Revision = "TBD"
+		co.Status = BuildNotRun
 		r.Components[cname] = co
 	}
         r.Steps = []StepRecord{}
 	for index := range p.Steps {
-		r.Steps = append(r.Steps, StepRecord{Directory: p.Steps[index].Directory, Command: p.Steps[index].Command})
+		r.Steps = append(r.Steps, StepRecord{Directory: p.Steps[index].Directory, Command: p.Steps[index].Command, Status: BuildNotRun})
 	}
 	return &r
 }
