@@ -20,18 +20,18 @@ import (
 	"regexp"
 )
 
-// Database
-type Database struct {
+// Server
+type Server struct {
 	Root     string             `json:"root"`
 	Projects map[string]*Project `json:"projects"`
 	Env      map[string]string  `json:"env"`
 }
 
-func NewDatabase(root string) *Database {
-	var db Database
+func NewServer(root string) *Server {
+	var server Server
 	log.Printf("Loading database: %s", root)
-	db.Root = root
-	db.Projects = map[string]*Project{}
+	server.Root = root
+	server.Projects = map[string]*Project{}
 	files, err := ioutil.ReadDir(fmt.Sprintf("%s/projects", root))
 	if err != nil {
 		log.Fatal(err)
@@ -47,23 +47,23 @@ func NewDatabase(root string) *Database {
 			if err != nil {
 				log.Printf("Project failed: %s %s", file.Name(), err)
 			} else {
-				db.Projects[p.Name] = p
+				server.Projects[p.Name] = p
 				log.Printf("Project loaded: %s", file.Name())
 			}
 		}
 	}
-	db.Env = map[string]string{}
-	log.Printf("Database loaded: %s", root)
-	return &db
+	server.Env = map[string]string{}
+	log.Printf("Server loaded: %s", root)
+	return &server
 }
 
-func (db *Database) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (server *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
         path := r.URL.Path
 	log.Printf("%s %s", r.Method, path)
         reProject := regexp.MustCompile(`^/projects/([-A-Za-z_0-9]+)$`)
         reBuild := regexp.MustCompile(`^/projects/([-A-Za-z_0-9]+)/build$`)
         if pMatches := reProject.FindSubmatch([]byte(path)); pMatches != nil {
-                p, present := db.Projects[string(pMatches[1])]
+                p, present := server.Projects[string(pMatches[1])]
                 if !present && (r.Method == http.MethodGet || r.Method == http.MethodDelete) {
                         /* Return a 404 if the project requested does not exist. */
                         http.NotFound(w, r)
@@ -75,8 +75,8 @@ func (db *Database) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		} else if r.Method == http.MethodDelete {
 			// FIXME Better implementation is required here. Error checking for file removal, etc...
 			p.ServeHTTP(w, r)
-			delete(db.Projects, p.Name)
-			os.Remove(fmt.Sprintf("%s/projects/%s", db.Root, p.Name))
+			delete(server.Projects, p.Name)
+			os.Remove(fmt.Sprintf("%s/projects/%s", server.Root, p.Name))
                         return
 		} else if r.Method == http.MethodPut || r.Method == http.MethodPost {
 			// Create a new project, save it.
@@ -86,12 +86,12 @@ func (db *Database) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "400 bad request", http.StatusBadRequest)
 				return
 			}
-			errSave := p.Save(fmt.Sprintf("%s/projects/%s", db.Root, p.Name))
+			errSave := p.Save(fmt.Sprintf("%s/projects/%s", server.Root, p.Name))
 			if errSave != nil {
 				http.Error(w, "500 failed to save the project", http.StatusInternalServerError)
 				return
 			}
-			db.Projects[p.Name] = p
+			server.Projects[p.Name] = p
 			p.ServeHTTP(w, r)
                         return
 		} else {
@@ -99,7 +99,7 @@ func (db *Database) ServeHTTP(w http.ResponseWriter, r *http.Request) {
                         return
 		}
         } else if pMatches := reBuild.FindSubmatch([]byte(path)); pMatches != nil {
-                p, present := db.Projects[string(pMatches[1])]
+                p, present := server.Projects[string(pMatches[1])]
                 if !present {
                         /* Return a 404 if the project requested does not exist. */
                         http.NotFound(w, r)
@@ -107,7 +107,7 @@ func (db *Database) ServeHTTP(w http.ResponseWriter, r *http.Request) {
                 }
 		if r.Method == "GET" {
 	                // Create the root directory for the build if it does not exist yet.
-	                root := fmt.Sprintf("%s/builds/%s", db.Root, p.Name)
+	                root := fmt.Sprintf("%s/builds/%s", server.Root, p.Name)
 	                if _, errStat := os.Stat(root); os.IsNotExist(errStat) {
 		                if errMkdir := os.MkdirAll(root, 0755); errMkdir != nil {
 					http.Error(w, "500 failed to create build directory", http.StatusInternalServerError)
