@@ -4,17 +4,19 @@
 
 // Package builder implements a software build server which supports
 // continuous integration processes.
-package builder
+package automat
 
 import (
 	"crypto/md5"
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"io/ioutil"
 	"log"
 	"sort"
 	"time"
+	"strings"
 	"net/http"
 )
 
@@ -157,8 +159,9 @@ func (p *Project) Build(root string) (*BuildRecord, error) {
 		start := time.Now()
 		if !buildFailed {
 			directory := fmt.Sprintf("%s/%s", root, step.Directory)
-			// FIXME Compute the environment to be passed to the command here.
-			err := runCommand(directory, step.Command[0], step.Command[1:]...)
+			// Compute the environment to be passed to the command here.
+			environment := ExpandEnvironment(root, p.Env, step.Env)
+			err := runCommand(directory, environment, step.Command[0], step.Command[1:]...)
 			end := time.Now()
 			if err != nil {
 				buildFailed = true
@@ -182,6 +185,42 @@ func (p *Project) Build(root string) (*BuildRecord, error) {
 	buildEnd := time.Now()
 	record.Duration = buildEnd.Sub(buildStart)
 	return record, nil
+}
+
+func ExpandEnvironment (root string, projectEnv map[string]string, stepEnv map[string]string) []string {
+	workEnv := map[string]string{}
+
+	stepGetenv := func (name string) string {
+		if name == "BUILD_ROOT" {
+			return root
+		}
+		value, present := workEnv[name]
+		if !present {
+			return ""
+		}
+		return value
+	}
+
+	// Fill up the work environment starting with the current process environment.
+	for _, key := range os.Environ() {
+		nameValue := strings.SplitN(key, "=", 2)
+		workEnv[nameValue[0]] = nameValue[1]
+	}
+
+	// Process Project environment variables
+	for name := range projectEnv {
+		workEnv[name] = os.Expand(projectEnv[name], stepGetenv)
+	}
+	// Process Step environment variables
+	for name := range stepEnv {
+		workEnv[name] = os.Expand(stepEnv[name], stepGetenv)
+	}
+
+	environment := []string{}
+	for name := range workEnv {
+		environment = append(environment, fmt.Sprintf("%s=%s", name, workEnv[name]))
+	}
+	return environment
 }
 
 func (p *Project) ServeHTTP(w http.ResponseWriter, r *http.Request) {

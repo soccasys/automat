@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package builder
+package automat
 
 import (
 	"bytes"
@@ -83,7 +83,7 @@ func findGitRemoteCommit(name, ref, root string) string {
 	return strings.TrimSpace(buffer.String())
 }
 
-func runCommand(directory, command string, args ...string) error {
+func runCommand(directory string, environment []string, command string, args ...string) error {
 	if _, errStat := os.Stat(directory); os.IsNotExist(errStat) {
 		return fmt.Errorf("Directory not found %s", directory)
 	}
@@ -91,6 +91,10 @@ func runCommand(directory, command string, args ...string) error {
 	cmd.Dir = directory
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
+	cmd.Env = environment
+	for _, value := range cmd.Env {
+		log.Println(value)
+	}
 	// FIXME Add handling of environment here
 	err := cmd.Run()
 	return err

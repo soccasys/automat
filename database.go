@@ -2,9 +2,9 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package builder implements a software build server which supports
+// Package automat implements a software build server which supports
 // continuous integration processes.
-package builder
+package automat
 
 import (
 	//"crypto/md5"
